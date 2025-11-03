@@ -78,6 +78,14 @@ export async function POST(request: NextRequest) {
         await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
         break;
 
+      case 'invoice.payment_succeeded':
+        await handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice);
+        break;
+
+      case 'invoice.payment_failed':
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
+
       default:
         console.log(`[Webhook] Unhandled event type: ${event.type}`);
     }
@@ -184,4 +192,70 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   });
 
   console.log(`Subscription ${stripeSubscriptionId} deleted/canceled`);
+}
+
+/**
+ * Handle invoice.payment_succeeded event
+ * Fires when recurring payment succeeds (e.g., monthly renewal)
+ */
+async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
+  const subscriptionId = invoice.subscription as string;
+  
+  if (!subscriptionId) {
+    console.log('[Webhook] Invoice has no subscription, skipping');
+    return;
+  }
+
+  // Fetch latest subscription details from Stripe
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+  // Update subscription with latest info
+  await prisma.subscription.update({
+    where: { stripeSubscriptionId: subscriptionId },
+    data: {
+      status: subscription.status,
+      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+    },
+  });
+
+  console.log(`[Webhook] Recurring payment succeeded for subscription ${subscriptionId}`);
+  
+  // Optional: Send confirmation email to user
+  // const user = await prisma.user.findUnique({ 
+  //   where: { stripeCustomerId: invoice.customer as string } 
+  // });
+  // await sendEmail(user.email, 'Payment Received', 'Thank you!');
+}
+
+/**
+ * Handle invoice.payment_failed event
+ * Fires when recurring payment fails
+ */
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  const subscriptionId = invoice.subscription as string;
+  
+  if (!subscriptionId) {
+    console.log('[Webhook] Invoice has no subscription, skipping');
+    return;
+  }
+
+  // Fetch latest subscription details
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+  // Update subscription status (might be 'past_due')
+  await prisma.subscription.update({
+    where: { stripeSubscriptionId: subscriptionId },
+    data: {
+      status: subscription.status,
+      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+    },
+  });
+
+  console.log(`[Webhook] Payment failed for subscription ${subscriptionId} - status: ${subscription.status}`);
+  
+  // Optional: Send notification to user
+  // const user = await prisma.user.findUnique({ 
+  //   where: { stripeCustomerId: invoice.customer as string } 
+  // });
+  // await sendEmail(user.email, 'Payment Failed', 'Please update payment method');
 }
