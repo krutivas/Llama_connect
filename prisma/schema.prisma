@@ -44,3 +44,14 @@ model Subscription {
   @@index([userId])
   @@index([stripeSubscriptionId])
 }
+
+model WebhookEvent {
+  id            String   @id @default(cuid())
+  stripeEventId String   @unique
+  eventType     String
+  processed     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@index([stripeEventId])
+  @@index([eventType])
+}

@@ -8,6 +8,7 @@ A production-ready subscription web app built with Next.js 14, TypeScript, Prism
 - **Subscription Plans**: Monthly ($9.99) and Annual ($99) plans powered by Stripe
 - **Stripe Checkout Integration**: Secure payment processing in test mode
 - **Webhook Handling**: Automated subscription status updates via Stripe webhooks
+- **Webhook Idempotency**: Prevents duplicate event processing (production-ready)
 - **Gated Content**: Activities area accessible only to active subscribers
 - **Modern UI**: Clean, responsive design with Tailwind CSS
 - **Type Safety**: Full TypeScript support throughout the application

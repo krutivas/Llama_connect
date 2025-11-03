@@ -7,6 +7,11 @@ import Stripe from 'stripe';
  * POST /api/stripe/webhook
  * Handles Stripe webhook events to update subscription status
  * 
+ * Features:
+ * - Webhook signature verification for security
+ * - Idempotency: prevents duplicate event processing
+ * - Records all processed events in database
+ * 
  * Handled events:
  * - checkout.session.completed: Create subscription record
  * - customer.subscription.updated: Update subscription status
@@ -46,6 +51,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // ? IDEMPOTENCY: Check if we've already processed this event
+    const existingEvent = await prisma.webhookEvent.findUnique({
+      where: { stripeEventId: event.id }
+    });
+
+    if (existingEvent) {
+      console.log(`[Webhook] Event ${event.id} already processed at ${existingEvent.createdAt}`);
+      return NextResponse.json({ 
+        received: true, 
+        message: 'Event already processed (idempotency)' 
+      });
+    }
+
     // Handle different event types
     switch (event.type) {
       case 'checkout.session.completed':
@@ -61,12 +79,22 @@ export async function POST(request: NextRequest) {
         break;
 
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        console.log(`[Webhook] Unhandled event type: ${event.type}`);
     }
 
+    // ? IDEMPOTENCY: Record that we've processed this event
+    await prisma.webhookEvent.create({
+      data: {
+        stripeEventId: event.id,
+        eventType: event.type,
+      }
+    });
+
+    console.log(`[Webhook] Successfully processed ${event.type} - ${event.id}`);
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('Webhook handler error:', error);
+    console.error('[Webhook] Handler error:', error);
+    // Don't record event if processing failed - Stripe will retry
     return NextResponse.json(
       { error: 'Webhook handler failed' },
       { status: 500 }
